@@ -1,0 +1,18 @@
+<idea-plugin>
+    <id>com.aiekick.cmakesourcegroups</id>
+    <name>CMake Source Groups</name>
+    <vendor>aiekick</vendor>
+
+    <description><![CDATA[
+    Displays CMake source_groups in a dedicated tool window.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="CMake Source Groups"
+                    anchor="left"
+                    icon="AllIcons.Nodes.Folder"
+                    factoryClass="com.aiekick.cmakesourcegroups.ToolCMakeSourceGroups"/>
+    </extensions>
+</idea-plugin>
