@@ -5,24 +5,29 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
+import com.intellij.ui.treeStructure.Tree
 import java.awt.BorderLayout
-import javax.swing.JButton
 import javax.swing.JPanel
-import javax.swing.JToolBar
-import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.wm.ex.ToolWindowEx
+import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.ToggleAction
 
 class ToolCMakeSourceGroups : ToolWindowFactory {
-
-    private lateinit var m_tree: JTree
+    private lateinit var m_tree: Tree
     private lateinit var m_treeModel: DefaultTreeModel
     private lateinit var m_parser: CMakeApiParser
     private lateinit var m_project: Project
+    private var m_sortTopLevelByName: Boolean = false
 
     override fun createToolWindowContent(vProject: Project, vToolWindow: ToolWindow) {
         m_project = vProject
@@ -31,6 +36,12 @@ class ToolCMakeSourceGroups : ToolWindowFactory {
         val panel = createPanel()
         val content = contentFactory.createContent(panel, "", false)
         vToolWindow.contentManager.addContent(content)
+
+        // >>> Boutons dans l’entête du Tool Window
+        (vToolWindow as? ToolWindowEx)?.apply {
+            setTitleActions(listOf(refreshAction, collapseAllAction, expandAllAction))
+            setAdditionalGearActions(gearGroup) // optionnel
+        }
     }
 
     private fun createPanel(): JPanel {
@@ -39,11 +50,11 @@ class ToolCMakeSourceGroups : ToolWindowFactory {
         // model + tree
         val rootSwing = DefaultMutableTreeNode("Loading...")
         m_treeModel = DefaultTreeModel(rootSwing)
-        m_tree = JTree(m_treeModel).apply {
+        m_tree = Tree(m_treeModel).apply {
             showsRootHandles = true
+            isOpaque = false
+            cellRenderer = NodeRenderer(m_project)
         }
-        m_tree.isOpaque = false
-        m_tree.cellRenderer = NodeRenderer(m_project)
 
         // open file on double click
         m_tree.addMouseListener(object : MouseAdapter() {
@@ -61,16 +72,7 @@ class ToolCMakeSourceGroups : ToolWindowFactory {
             }
         })
 
-        // toolbar
-        val toolbar = JToolBar().apply {
-            isFloatable = false
-            add(JButton("Refresh").apply {
-                addActionListener { rebuildTree() }
-            })
-        }
-
         panel.add(JBScrollPane(m_tree), BorderLayout.CENTER)
-        panel.add(toolbar, BorderLayout.SOUTH)
 
         // initial load
         rebuildTree()
@@ -79,9 +81,10 @@ class ToolCMakeSourceGroups : ToolWindowFactory {
     }
 
     private fun rebuildTree() {
-        // build in-memory tree
         val sgRoot = m_parser.buildTree()
-        // convert to Swing
+        if (m_sortTopLevelByName) {
+            sgRoot.children.sortBy { it.label.lowercase(java.util.Locale.ROOT) }
+        }
         val swingRoot = sgToSwing(sgRoot)
         m_treeModel.setRoot(swingRoot)
         collapseAll()
@@ -89,20 +92,14 @@ class ToolCMakeSourceGroups : ToolWindowFactory {
 
     private fun sgToSwing(root: SgNode): DefaultMutableTreeNode {
         fun build(n: SgNode): DefaultMutableTreeNode {
-            // label sans emojis éventuels au cas où le parser en a encore
-            val cleanText = n.label
-                .removePrefix("📁 ").removePrefix("📄 ").removePrefix("📜 ")
-                .removePrefix("🔧 ").removePrefix("🧱 ").removePrefix("🧩 ")
-                .removePrefix("▶️ ").removePrefix("⚙️ ")
-
             // Pour ouvrir/typer, on veut un chemin absolu si c’est un fichier.
             // Actuellement ton parser place l’abs path dans le label "name — ABS".
             val abs = if (n.kind == SgNode.Kind.FILE) {
-                val idx = cleanText.lastIndexOf(" — ")
-                if (idx > 0) cleanText.substring(idx + 3).trim().ifBlank { null } else null
+                val idx = n.label.lastIndexOf(" — ")
+                if (idx > 0) n.label.substring(idx + 3).trim().ifBlank { null } else null
             } else null
 
-            val display = if (abs != null) cleanText.substringBefore(" — ").trim() else cleanText
+            val display = if (abs != null) n.label.substringBefore(" — ").trim() else n.label
 
             val ui = UiNode(text = display, absPath = abs, kind = n.kind)
             val dn = DefaultMutableTreeNode(ui)
@@ -111,7 +108,6 @@ class ToolCMakeSourceGroups : ToolWindowFactory {
         }
         return build(root)
     }
-
 
     private fun expandAll() {
         var i = 0
@@ -129,7 +125,23 @@ class ToolCMakeSourceGroups : ToolWindowFactory {
         }
     }
 
-    override fun shouldBeAvailable(project: Project): Boolean {
+    private val refreshAction = object : AnAction("Refresh", "Rebuild the tree", AllIcons.Actions.Refresh), DumbAware {
+        override fun actionPerformed(e: AnActionEvent) = rebuildTree()
+    }
+
+    private val collapseAllAction = object : AnAction("Collapse All", "Collapse all nodes", AllIcons.Actions.Collapseall), DumbAware {
+        override fun actionPerformed(e: AnActionEvent) = collapseAll()
+    }
+
+    private val expandAllAction = object : AnAction("Expand All", "Expand all nodes", AllIcons.Actions.Expandall), DumbAware {
+        override fun actionPerformed(e: AnActionEvent) = expandAll()
+    }
+
+    private val gearGroup = DefaultActionGroup().apply {
+        // add(collapseAllAction(...)) etc. si tu veux
+    }
+
+    override fun shouldBeAvailable(vProject: Project): Boolean {
         return true
     }
 }

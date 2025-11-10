@@ -11,16 +11,16 @@ import java.io.File
 import javax.swing.Icon
 
 /** Best-effort icon for an absolute file or directory path. */
-fun iconForAbsolutePath(project: Project, absPath: String): Icon {
-    val vf = LocalFileSystem.getInstance().findFileByPath(absPath)
+fun iconForAbsolutePath(vProject: Project, vAbsPath: String): Icon {
+    val vf = LocalFileSystem.getInstance().findFileByPath(vAbsPath)
     if (vf != null) {
         // IDE-native icon (includes read-only/external overlays, etc.)
-        IconUtil.getIcon(vf, Iconable.ICON_FLAG_READ_STATUS, project)?.let { return it }
+        IconUtil.getIcon(vf, Iconable.ICON_FLAG_READ_STATUS, vProject)?.let { return it }
         return if (vf.isDirectory) AllIcons.Nodes.Folder else AllIcons.FileTypes.Any_type
     }
 
     // Fallback by file name/extension
-    val f = File(absPath)
+    val f = File(vAbsPath)
     if (f.isDirectory) return AllIcons.Nodes.Folder
     val ft = FileTypeManager.getInstance().getFileTypeByFileName(f.name)
     return ft.icon ?: AllIcons.FileTypes.Any_type

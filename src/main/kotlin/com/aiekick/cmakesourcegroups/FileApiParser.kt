@@ -1,5 +1,6 @@
 package com.aiekick.cmakesourcegroups
 
+// comments in English only
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -8,7 +9,7 @@ import java.io.File
 import java.nio.file.Paths
 import java.util.Locale
 
-// In-memory tree model
+// Minimal in-memory tree
 data class SgNode(
     val label: String,
     val kind: Kind,
@@ -29,45 +30,80 @@ class CMakeApiParser(private val project: Project) {
     private val gson = Gson()
 
     fun buildTree(): SgNode {
-        val root = SgNode("CMake Source Groups", SgNode.Kind.ROOT)
+        val root = SgNode(project.name, SgNode.Kind.ROOT)
         val replyDir = findReplyDir() ?: return root
 
-        // codemodel
+        // --- codemodel
         val cmFile = replyDir.listFiles { _, n -> n.startsWith("codemodel-v2") && n.endsWith(".json") }
             ?.firstOrNull() ?: return root
         val cm = gson.fromJson(cmFile.readText(), JsonObject::class.java)
 
-        // directories -> sourceAbs
+        // --- directories -> sourceAbs
         val dirInfoByIndex = loadDirectories(replyDir, cm)
 
-        // targets
+        // --- project absolute root
+        val projectBaseAbs = File(project.basePath ?: ".").absolutePath
+
+        // --- internal CMake files (absolute) and their parent dirs (anchors)
+        val cmakeFilesAbs = loadInternalCMakeFilesFromV1(replyDir, projectBaseAbs)
+        val cmakeRoots: Set<String> = cmakeFilesAbs
+            .mapNotNull { File(it).parentFile?.absolutePath }
+            .map { normalizeAbs(it) }
+            .toSet()
+
+        // --- targets
         val targets = collectTargets(replyDir, cm)
 
-        // visual folders builder
+        // --- visual folders
         val folders = FolderIndex(root)
 
-        // disk owner map: sourceAbs -> target node
+        // --- owner map: disk anchor -> visual TARGET node
         val ownerMap = linkedMapOf<String, SgNode>()
 
-        // build targets + groups
+        // --- per-target
         for (te in targets) {
             val tj = gson.fromJson(te.file.readText(), JsonObject::class.java)
             val tName = tj.get("name")?.asString ?: "<target>"
 
+            // visual parent (solution folder)
             val folderPath = te.folderName ?: tj.getAsJsonObject("folder")?.get("name")?.asString
             val parent = if (folderPath.isNullOrBlank()) root else folders.ensure(folderPath)
 
-            val tNode = SgNode(tName, SgNode.Kind.TARGET)
-            parent.children += tNode
+            // disk candidates
+            val sourceRel = tj.getAsJsonObject("paths")?.get("source")?.asString ?: ""
+            val sourceAbsFromTarget = if (sourceRel.isNotBlank()) normalizeAbs(toAbs(projectBaseAbs, sourceRel)) else ""
+            val dirAbsFromIndex = te.directoryIndex
+                ?.let { idx -> dirInfoByIndex[idx]?.sourceAbs }
+                ?.let { normalizeAbs(it) }
+                ?: ""
 
-            // owner (disk anchor -> this target)
-            te.directoryIndex?.let { idx ->
-                dirInfoByIndex[idx]?.sourceAbs?.let { src ->
-                    if (src.isNotBlank()) ownerMap[normalizeAbs(src)] = tNode
+            val candidateDirs = listOf(dirAbsFromIndex, sourceAbsFromTarget).filter { it.isNotBlank() }
+
+            // choose best anchor for this target:
+            // prefer a cmake-root that prefixes one candidate; longest wins; fallback to most specific candidate; else project root
+            val bestAnchor: String = run {
+                var best: String? = null
+                var bestLen = -1
+                for (cand in candidateDirs) {
+                    for (rootDir in cmakeRoots) {
+                        if (startsWithPathSegment(cand, rootDir) && rootDir.length > bestLen) {
+                            best = rootDir
+                            bestLen = rootDir.length
+                        }
+                    }
                 }
+                best ?: (candidateDirs.maxByOrNull { it.length } ?: projectBaseAbs)
             }
 
-            // include dirs
+            // TARGET node (label includes resolved anchor for inspection)
+            val targetLabel = "$tName — $bestAnchor/$tName"
+            val tNode = SgNode(targetLabel, SgNode.Kind.TARGET)
+            parent.children += tNode
+
+            // register owner
+            ownerMap[bestAnchor] = tNode
+
+            // Include dirs
             val includeDirs = collectIncludeDirs(tj)
             if (includeDirs.isNotEmpty()) {
                 val inc = SgNode("Include Dirs", SgNode.Kind.GROUP)
@@ -77,7 +113,49 @@ class CMakeApiParser(private val project: Project) {
                 tNode.children += inc
             }
 
-            // source groups
+            // Defines
+            val defines = collectDefines(tj)
+            if (defines.isNotEmpty()) {
+                val defNode = SgNode("Defines", SgNode.Kind.GROUP)
+                defines.sortedWith(String.CASE_INSENSITIVE_ORDER).forEach { d ->
+                    defNode.children += SgNode(d, SgNode.Kind.FILE)
+                }
+                tNode.children += defNode
+            }
+
+            // Compile flags (fragments)
+            val compileFrags = collectCompileFragments(tj)
+            if (compileFrags.isNotEmpty()) {
+                val cmpNode = SgNode("Compile Flags", SgNode.Kind.GROUP)
+                compileFrags.forEach { f -> cmpNode.children += SgNode(f, SgNode.Kind.FILE) }
+                tNode.children += cmpNode
+            }
+
+            // Link / Archive flags
+            val linkFrags = collectCommandFragments(tj.getAsJsonObject("link"))
+            if (linkFrags.isNotEmpty()) {
+                val ln = SgNode("Link Flags", SgNode.Kind.GROUP)
+                linkFrags.forEach { f -> ln.children += SgNode(f, SgNode.Kind.FILE) }
+                tNode.children += ln
+            }
+            val archFrags = collectCommandFragments(tj.getAsJsonObject("archive"))
+            if (archFrags.isNotEmpty()) {
+                val an = SgNode("Archive Flags", SgNode.Kind.GROUP)
+                archFrags.forEach { f -> an.children += SgNode(f, SgNode.Kind.FILE) }
+                tNode.children += an
+            }
+
+            // Dependencies (raw ids)
+            val deps = collectDependencies(tj)
+            if (deps.isNotEmpty()) {
+                val dn = SgNode("Dependencies", SgNode.Kind.GROUP)
+                deps.sortedWith(String.CASE_INSENSITIVE_ORDER).forEach { id ->
+                    dn.children += SgNode(id, SgNode.Kind.FILE)
+                }
+                tNode.children += dn
+            }
+
+            // Source groups
             val sources = tj.getAsJsonArray("sources") ?: JsonArray()
             val groups = tj.getAsJsonArray("sourceGroups") ?: JsonArray()
             val pathsByIdx = ArrayList<String>(sources.size())
@@ -94,18 +172,13 @@ class CMakeApiParser(private val project: Project) {
             addUngroupedIfAny(project, pathsByIdx, groups, tNode)
         }
 
-        // fallback owner: project root -> root node
-        val projectBaseAbs = File(project.basePath ?: ".").absolutePath
+        // --- fallback owner
         ownerMap[normalizeAbs(projectBaseAbs)] = root
 
-        // cmakeFiles-v1: internal cmake scripts (absolute)
-        val cmakeAbs = loadInternalCMakeFilesFromV1(replyDir, projectBaseAbs)
-
-        // insert each cmake file under its visual owner, recreating disk subpath
-        for (abs in cmakeAbs) {
+        // --- insert cmake files under chosen owners
+        for (abs in cmakeFilesAbs) {
             val ownerAbs = pickOwnerByLongestPrefix(ownerMap.keys, abs) ?: projectBaseAbs
             val ownerNode = ownerMap[ownerAbs] ?: root
-
             val rel = try {
                 Paths.get(ownerAbs).relativize(Paths.get(abs)).toString().replace('\\','/')
             } catch (_: Exception) {
@@ -114,15 +187,17 @@ class CMakeApiParser(private val project: Project) {
             insertDiskPathUnder(ownerNode, rel, abs)
         }
 
+        // --- sort: folders/group/ungrouped → targets → files
         sortRec(root)
         return root
     }
 
-    // ---------- load data ----------
+    // ------------------- load data -------------------
 
     private fun collectTargets(replyDir: File, cm: JsonObject): List<TargetEntry> {
         val out = mutableListOf<TargetEntry>()
 
+        // legacy
         cm.getAsJsonArray("objects")?.let { arr ->
             for (i in 0 until arr.size()) {
                 val jf = arr[i].asJsonObject.get("jsonFile")?.asString ?: continue
@@ -132,6 +207,7 @@ class CMakeApiParser(private val project: Project) {
         }
         if (out.isNotEmpty()) return out
 
+        // modern
         cm.getAsJsonArray("configurations")?.let { cfgs ->
             val chosen = pickConfiguration(cfgs) ?: return out
             chosen.getAsJsonArray("targets")?.let { tarr ->
@@ -193,7 +269,68 @@ class CMakeApiParser(private val project: Project) {
         return keep.toList()
     }
 
-    // ---------- tree helpers ----------
+    // ------------------- per-target extra sections -------------------
+
+    private fun collectDefines(tj: JsonObject): Set<String> {
+        val out = linkedSetOf<String>()
+        tj.getAsJsonArray("compileGroups")?.let { groups ->
+            for (i in 0 until groups.size()) {
+                val cg = groups[i].asJsonObject
+                cg.getAsJsonArray("defines")?.let { defs ->
+                    for (j in 0 until defs.size()) {
+                        defs[j].asJsonObject.get("define")?.asString?.let { d ->
+                            if (d.isNotBlank()) out += d
+                        }
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    private fun collectCompileFragments(tj: JsonObject): List<String> {
+        val out = mutableListOf<String>()
+        tj.getAsJsonArray("compileGroups")?.let { groups ->
+            for (i in 0 until groups.size()) {
+                val cg = groups[i].asJsonObject
+                cg.getAsJsonArray("compileCommandFragments")?.let { frags ->
+                    for (j in 0 until frags.size()) {
+                        frags[j].asJsonObject.get("fragment")?.asString?.let { f ->
+                            if (f.isNotBlank()) out += f
+                        }
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    private fun collectCommandFragments(obj: JsonObject?): List<String> {
+        if (obj == null) return emptyList()
+        val out = mutableListOf<String>()
+        obj.getAsJsonArray("commandFragments")?.let { frags ->
+            for (i in 0 until frags.size()) {
+                frags[i].asJsonObject.get("fragment")?.asString?.let { f ->
+                    if (f.isNotBlank()) out += f
+                }
+            }
+        }
+        return out
+    }
+
+    private fun collectDependencies(tj: JsonObject): List<String> {
+        val out = mutableListOf<String>()
+        tj.getAsJsonArray("dependencies")?.let { deps ->
+            for (i in 0 until deps.size()) {
+                val d = deps[i].asJsonObject
+                val id = d.get("id")?.asString
+                if (!id.isNullOrBlank()) out += id
+            }
+        }
+        return out
+    }
+
+    // ------------------- tree helpers -------------------
 
     // Reuse existing folder (SOL_FOLDER or GROUP) else create GROUP
     private fun ensureFolderChild(parent: SgNode, name: String): SgNode {
@@ -273,7 +410,7 @@ class CMakeApiParser(private val project: Project) {
         if (hit == null) parent.children += SgNode(label, SgNode.Kind.FILE)
     }
 
-    // ---------- utils ----------
+    // ------------------- utils -------------------
 
     private fun collectIncludeDirs(tj: JsonObject): Set<String> {
         val out = linkedSetOf<String>()
@@ -303,17 +440,19 @@ class CMakeApiParser(private val project: Project) {
         return cfgs.firstOrNull()?.asJsonObject
     }
 
+    private fun kindRank(k: SgNode.Kind): Int = when (k) {
+        SgNode.Kind.SOL_FOLDER, SgNode.Kind.GROUP, SgNode.Kind.UNGROUPED -> 0
+        SgNode.Kind.TARGET -> 1
+        SgNode.Kind.FILE -> 2
+        SgNode.Kind.ROOT -> -1
+    }
+
     private fun sortRec(node: SgNode) {
         node.children.sortWith(
-            compareBy<SgNode> {
-                when (it.kind) {
-                    SgNode.Kind.SOL_FOLDER -> 0
-                    SgNode.Kind.TARGET     -> 1
-                    SgNode.Kind.GROUP      -> 2
-                    SgNode.Kind.UNGROUPED  -> 3
-                    else                   -> 4
-                }
-            }.thenBy { it.label.lowercase(Locale.ROOT) }
+            compareBy<SgNode>(
+                { kindRank(it.kind) },
+                { it.label.lowercase(Locale.ROOT) }
+            )
         )
         node.children.forEach { sortRec(it) }
     }

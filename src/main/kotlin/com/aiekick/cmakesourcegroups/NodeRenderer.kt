@@ -9,8 +9,7 @@ import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
 
-class NodeRenderer(private val project: Project) : DefaultTreeCellRenderer() {
-
+class NodeRenderer(private val vProject: Project) : DefaultTreeCellRenderer() {
     init {
         // Clean look, no gray block behind text
         isOpaque = false
@@ -21,7 +20,7 @@ class NodeRenderer(private val project: Project) : DefaultTreeCellRenderer() {
         borderSelectionColor = UIUtil.getTreeSelectionBorderColor()
     }
 
-    private fun iconForTargetType(type: String): Icon = when (type) {
+    private fun iconForTargetType(vType: String): Icon = when (vType) {
         "EXECUTABLE" -> AllIcons.RunConfigurations.Application
         "STATIC_LIBRARY" -> AllIcons.Nodes.Library
         "OBJECT_LIBRARY" -> AllIcons.Nodes.Library
@@ -31,21 +30,21 @@ class NodeRenderer(private val project: Project) : DefaultTreeCellRenderer() {
     }
 
     override fun getTreeCellRendererComponent(
-        tree: JTree, value: Any, sel: Boolean, expanded: Boolean,
-        leaf: Boolean, row: Int, hasFocus: Boolean
+        vTree: JTree, vValue: Any, vSel: Boolean, vExpanded: Boolean,
+        vLeaf: Boolean, vRow: Int, vHasFocus: Boolean
     ): Component {
-        val c = super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
+        val c = super.getTreeCellRendererComponent(vTree, vValue, vSel, vExpanded, vLeaf, vRow, vHasFocus)
 
-        val dm = value as? DefaultMutableTreeNode
+        val dm = vValue as? DefaultMutableTreeNode
         val ui = dm?.userObject as? UiNode
 
         text = ui?.text ?: dm?.userObject?.toString().orEmpty()
+        text += " " + ui?.absPath
 
         val icon = when (ui?.kind) {
             SgNode.Kind.FILE -> {
-                // Prefer real path → exact file type icon; else fallback by name only
                 val abs = ui.absPath
-                if (!abs.isNullOrBlank()) iconForAbsolutePath(project, abs)
+                if (!abs.isNullOrBlank()) iconForAbsolutePath(vProject, abs)
                 else iconForFileName(ui.text)
             }
             SgNode.Kind.SOL_FOLDER, SgNode.Kind.GROUP -> AllIcons.Nodes.Folder
