@@ -262,7 +262,7 @@ class CMakeApiParser(private val vProject: Project) {
             val i = idxArr[k].asInt
             val p = pathsByIdx.getOrNull(i) ?: continue
             val abs = normalizeAbs(toAbs(project.basePath ?: ".", p))
-            dst.children += SgNode(File(abs).name + " — " + abs, SgNode.Kind.FILE)
+            dst.children += SgNode(File(abs).name, SgNode.Kind.FILE)
         }
         groupJson.getAsJsonArray("sourceGroups")?.let { sub ->
             for (m in 0 until sub.size()) {
@@ -291,7 +291,7 @@ class CMakeApiParser(private val vProject: Project) {
         val un = SgNode("Ungrouped", SgNode.Kind.UNGROUPED)
         for (i in pathsByIdx.indices) if (i !in grouped) {
             val abs = normalizeAbs(toAbs(project.basePath ?: ".", pathsByIdx[i]))
-            un.children += SgNode(File(abs).name + " — " + abs, SgNode.Kind.FILE)
+            un.children += SgNode(File(abs).name, SgNode.Kind.FILE)
         }
         if (un.children.isNotEmpty()) target.children += un
     }
