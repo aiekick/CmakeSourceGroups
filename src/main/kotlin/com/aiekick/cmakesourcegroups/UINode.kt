@@ -1,8 +1,8 @@
 package com.aiekick.cmakesourcegroups
 
-data class UiNode(
+data class UINode(
     val text: String,           // label
     val absPath: String?,       // chemin absolu ou null
     val kind: SgNode.Kind,       // ROOT / SOL_FOLDER / TARGET / GROUP / FILE / UNGROUPED
-    val targetType: String? = null   // <- add this
+    val targetType: SgNode.TargetType? = null   // <- add this
 )

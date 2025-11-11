@@ -20,12 +20,27 @@ class NodeRenderer(private val vProject: Project) : DefaultTreeCellRenderer() {
         borderSelectionColor = UIUtil.getTreeSelectionBorderColor()
     }
 
-    private fun iconForTargetType(vType: String): Icon = when (vType) {
-        "EXECUTABLE" -> AllIcons.RunConfigurations.Application
-        "STATIC_LIBRARY" -> AllIcons.Nodes.Library
-        "OBJECT_LIBRARY" -> AllIcons.Nodes.Library
-        "SHARED_LIBRARY", "MODULE_LIBRARY" -> AllIcons.Nodes.Library
-        "UTILITY" -> AllIcons.Actions.Execute
+    companion object {
+        private val libraryIcon: Icon by lazy {
+            val iconNames = listOf("PpLib", "Static", "Library", "Artifact")
+            for (iconName in iconNames) {
+                try {
+                    val field = AllIcons.Nodes::class.java.getField(iconName)
+                    return@lazy field.get(null) as Icon
+                } catch (e: Exception) {
+                    // Continuer avec la suivante
+                }
+            }
+            AllIcons.Nodes.Module
+        }
+    }
+
+    private fun iconForTargetType(vType: SgNode.TargetType?): Icon = when (vType) {
+        SgNode.TargetType.EXECUTABLE -> AllIcons.RunConfigurations.Application
+        SgNode.TargetType.STATIC_LIBRARY -> libraryIcon
+        SgNode.TargetType.OBJECT_LIBRARY -> libraryIcon
+        SgNode.TargetType.SHARED_LIBRARY, SgNode.TargetType.MODULE_LIBRARY -> libraryIcon
+        SgNode.TargetType.UTILITY -> AllIcons.Actions.Execute
         else -> AllIcons.Nodes.Module
     }
 
@@ -36,19 +51,19 @@ class NodeRenderer(private val vProject: Project) : DefaultTreeCellRenderer() {
         val c = super.getTreeCellRendererComponent(vTree, vValue, vSel, vExpanded, vLeaf, vRow, vHasFocus)
 
         val dm = vValue as? DefaultMutableTreeNode
-        val ui = dm?.userObject as? UiNode
+        val ui = dm?.userObject as? UINode
 
         text = ui?.text ?: dm?.userObject?.toString().orEmpty()
-        text += " " + ui?.absPath
 
         val icon = when (ui?.kind) {
             SgNode.Kind.FILE -> {
                 val abs = ui.absPath
-                if (!abs.isNullOrBlank()) iconForAbsolutePath(vProject, abs)
-                else iconForFileName(ui.text)
+                if (!abs.isNullOrBlank()) Icons.iconForAbsolutePath(vProject, abs)
+                else Icons.iconForFileName(ui.text)
             }
-            SgNode.Kind.SOL_FOLDER, SgNode.Kind.GROUP -> AllIcons.Nodes.Folder
-            SgNode.Kind.TARGET -> iconForTargetType(ui.targetType ?: "")
+            SgNode.Kind.CMAKE_EXTRA -> AllIcons.Actions.Minimap
+            SgNode.Kind.GROUP -> AllIcons.Nodes.Folder
+            SgNode.Kind.TARGET -> iconForTargetType(ui.targetType)
             else -> null
         }
 

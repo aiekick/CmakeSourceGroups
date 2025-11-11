@@ -2,10 +2,11 @@ plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.1.0"
     id("org.jetbrains.intellij.platform") version "2.7.1"
+    id("co.uzzu.dotenv.gradle") version "4.0.0"
 }
 
 group = "com.aiekick"
-version = "1.0-SNAPSHOT"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
@@ -14,37 +15,47 @@ repositories {
     }
 }
 
-// Configure IntelliJ Platform Gradle Plugin
-// Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
     intellijPlatform {
-        clion("2025.2.4")
-        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
+        clion("2024.1")
     }
 }
 
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "251"
+            sinceBuild = "241"  // CLion 2024.1 minimum
+            untilBuild = provider { null }  // Pas de limite supérieure
         }
-
         changeNotes = """
-            Initial version
+            First release.
         """.trimIndent()
+    }
+    pluginVerification {
+        ides {
+            create("CL", "2024.1")
+            create("CL", "2025.2.4")
+        }
+    }
+    signing {
+        certificateChainFile.set(file("keys/chain.crt"))
+        privateKeyFile.set(file("keys/private.pem"))
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
+    publishing {
+        token.set(file("keys/token").toString())
     }
 }
 
 tasks {
-    // Set the JVM compatibility versions
     withType<JavaCompile> {
-        sourceCompatibility = "21"
-        targetCompatibility = "21"
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
     }
 }
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }

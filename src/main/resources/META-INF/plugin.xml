@@ -2,17 +2,24 @@
     <id>com.aiekick.cmakesourcegroups</id>
     <name>CMake Source Groups</name>
     <vendor>aiekick</vendor>
-
-    <description><![CDATA[
-    Displays CMake source_groups in a dedicated tool window.
-    ]]></description>
-
-    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.clion.ide</depends>
+    <description>
+        <![CDATA[
+        Displays CMake source_groups in a dedicated tool window.
+        ]]>
+    </description>
+    <change-notes>
+        <![CDATA[
+      <ul>
+        <li><b>0.1.0</b> First release</li>
+      </ul>
+    ]]>
+    </change-notes>
 
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow id="CMake Source Groups"
                     anchor="left"
-                    icon="AllIcons.Nodes.Folder"
+                    icon="com.aiekick.cmakesourcegroups.Icons.CMakeIcon"
                     factoryClass="com.aiekick.cmakesourcegroups.ToolCMakeSourceGroups"/>
     </extensions>
 </idea-plugin>

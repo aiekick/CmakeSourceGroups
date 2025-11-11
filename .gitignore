@@ -2,6 +2,7 @@
 .gradle
 .intellijPlatform
 .mtj.tmp
+.env
 
 *.class
 *.log
@@ -18,3 +19,6 @@ hs_err_pid*
 replay_pid*
 
 build
+keys
+/keys/token
+/.env
