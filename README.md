@@ -15,7 +15,7 @@ You will have a pane Called "CMake Source Groups"
 
 In the title bar you can select the mode
 
-In each target you will have a special directory called "CMakeExtra" where you can find many sections :
+In each target you will have a special directory called "CMakeExtras" where you can find many sections :
 * Defines : List of defines of your target
 * Dependencies : The targets dependencies
 * Flags : Compile and link flags of your target
