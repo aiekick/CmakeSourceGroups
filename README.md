@@ -6,8 +6,8 @@ similarly as what visual studio is doing from long time ago
 
 # Minimal versions supported 
 
-CLion : 2024.1
-CMake : 3.17
+* CLion : 2024.1
+* CMake : 3.17
 
 # Infos
 
