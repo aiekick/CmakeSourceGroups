@@ -14,6 +14,10 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.vfs.LocalFileSystem
 
 class ToolCMakeSourceGroups : ToolWindowFactory {
     private lateinit var m_tree: Tree
@@ -71,7 +75,20 @@ class ToolCMakeSourceGroups : ToolWindowFactory {
         m_treeModel = DefaultTreeModel(root)
         m_tree = Tree(m_treeModel)
         m_tree.cellRenderer = NodeRenderer(m_project)
-
+        m_tree.addMouseListener(object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent) {
+                if (e.clickCount != 2) return
+                val row = m_tree.getRowForLocation(e.x, e.y)
+                if (row < 0) return
+                val path = m_tree.getPathForLocation(e.x, e.y) ?: return
+                val dm = path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                val ui = dm.userObject as? UINode ?: return
+                if (ui.kind != SgNode.Kind.FILE) return
+                val abs = ui.absPath ?: return
+                val vf = LocalFileSystem.getInstance().findFileByPath(abs) ?: return
+                FileEditorManager.getInstance(m_project).openFile(vf, true)
+            }
+        })
         val scrollPane = JBScrollPane(m_tree)
         val panel = JPanel(BorderLayout())
         panel.add(scrollPane, BorderLayout.CENTER)
@@ -93,7 +110,7 @@ class ToolCMakeSourceGroups : ToolWindowFactory {
     }
 
     private fun sgToSwing(root: SgNode): DefaultMutableTreeNode {
-        val dm = DefaultMutableTreeNode(UINode(root.label, null, root.kind, root.targetType))
+        val dm = DefaultMutableTreeNode(UINode(root.label, root.absPath, root.kind, root.targetType))
         for (child in root.children) {
             dm.add(sgToSwing(child))
         }

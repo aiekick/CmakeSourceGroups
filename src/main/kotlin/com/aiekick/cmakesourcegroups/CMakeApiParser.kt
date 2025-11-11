@@ -55,7 +55,7 @@ class CMakeApiParser(private val vProject: Project) {
                 null
             }
             val targetLabel = "$tName"
-            val tNode = SgNode(targetLabel, SgNode.Kind.TARGET, targetType)
+            val tNode = SgNode(targetLabel, SgNode.Kind.TARGET,null, targetType)
             parent.children += tNode
 
             val extraNode = SgNode("CMakeExtras", SgNode.Kind.CMAKE_EXTRA)
@@ -66,7 +66,7 @@ class CMakeApiParser(private val vProject: Project) {
             if (includeDirs.isNotEmpty()) {
                 val inc = SgNode("Include Dirs", SgNode.Kind.GROUP)
                 includeDirs.sortedWith(String.CASE_INSENSITIVE_ORDER).forEach { p ->
-                    inc.children += SgNode(p, SgNode.Kind.FILE)
+                    inc.children += SgNode(p, SgNode.Kind.FLAG)
                 }
                 extraNode.children += inc
             }
@@ -76,7 +76,7 @@ class CMakeApiParser(private val vProject: Project) {
             if (defines.isNotEmpty()) {
                 val defNode = SgNode("Defines", SgNode.Kind.GROUP)
                 defines.sortedWith(String.CASE_INSENSITIVE_ORDER).forEach { d ->
-                    defNode.children += SgNode(d, SgNode.Kind.FILE)
+                    defNode.children += SgNode(d, SgNode.Kind.FLAG)
                 }
                 extraNode.children += defNode
             }
@@ -86,7 +86,7 @@ class CMakeApiParser(private val vProject: Project) {
             if (deps.isNotEmpty()) {
                 val dn = SgNode("Dependencies", SgNode.Kind.GROUP)
                 deps.sortedWith(String.CASE_INSENSITIVE_ORDER).forEach { id ->
-                    dn.children += SgNode(id, SgNode.Kind.FILE)
+                    dn.children += SgNode(id.substringBefore("::"), SgNode.Kind.TARGET)
                 }
                 extraNode.children += dn
             }
@@ -98,7 +98,7 @@ class CMakeApiParser(private val vProject: Project) {
             val compileFrags = collectCompileFragments(tj)
             if (compileFrags.isNotEmpty()) {
                 val cmpNode = SgNode("Compile", SgNode.Kind.GROUP)
-                compileFrags.forEach { f -> cmpNode.children += SgNode(f, SgNode.Kind.FILE) }
+                compileFrags.forEach { f -> cmpNode.children += SgNode(f, SgNode.Kind.FLAG) }
                 flagsNode.children += cmpNode
             }
 
@@ -106,13 +106,13 @@ class CMakeApiParser(private val vProject: Project) {
             val linkFrags = collectCommandFragments(tj.getAsJsonObject("link"))
             if (linkFrags.isNotEmpty()) {
                 val ln = SgNode("Link", SgNode.Kind.GROUP)
-                linkFrags.forEach { f -> ln.children += SgNode(f, SgNode.Kind.FILE) }
+                linkFrags.forEach { f -> ln.children += SgNode(f, SgNode.Kind.FLAG) }
                 flagsNode.children += ln
             }
             val archFrags = collectCommandFragments(tj.getAsJsonObject("archive"))
             if (archFrags.isNotEmpty()) {
                 val an = SgNode("Archive", SgNode.Kind.GROUP)
-                archFrags.forEach { f -> an.children += SgNode(f, SgNode.Kind.FILE) }
+                archFrags.forEach { f -> an.children += SgNode(f, SgNode.Kind.FLAG) }
                 flagsNode.children += an
             }
 
@@ -262,7 +262,7 @@ class CMakeApiParser(private val vProject: Project) {
             val i = idxArr[k].asInt
             val p = pathsByIdx.getOrNull(i) ?: continue
             val abs = normalizeAbs(toAbs(project.basePath ?: ".", p))
-            dst.children += SgNode(File(abs).name, SgNode.Kind.FILE)
+            dst.children += SgNode(File(abs).name, SgNode.Kind.FILE, abs)
         }
         groupJson.getAsJsonArray("sourceGroups")?.let { sub ->
             for (m in 0 until sub.size()) {
@@ -291,7 +291,7 @@ class CMakeApiParser(private val vProject: Project) {
         val un = SgNode("Ungrouped", SgNode.Kind.UNGROUPED)
         for (i in pathsByIdx.indices) if (i !in grouped) {
             val abs = normalizeAbs(toAbs(project.basePath ?: ".", pathsByIdx[i]))
-            un.children += SgNode(File(abs).name, SgNode.Kind.FILE)
+            un.children += SgNode(File(abs).name, SgNode.Kind.FILE, abs)
         }
         if (un.children.isNotEmpty()) target.children += un
     }
@@ -326,11 +326,11 @@ class CMakeApiParser(private val vProject: Project) {
     }
 
     private fun kindRank(k: SgNode.Kind): Int = when (k) {
-        SgNode.Kind.CMAKE_EXTRA, ->0
+        SgNode.Kind.ROOT -> -1
+        SgNode.Kind.CMAKE_EXTRA ->0
         SgNode.Kind.GROUP, SgNode.Kind.UNGROUPED -> 1
         SgNode.Kind.TARGET -> 2
-        SgNode.Kind.FILE -> 3
-        SgNode.Kind.ROOT -> -1
+        SgNode.Kind.FILE, SgNode.Kind.FLAG -> 3
     }
 
     private fun sortRec(node: SgNode) {

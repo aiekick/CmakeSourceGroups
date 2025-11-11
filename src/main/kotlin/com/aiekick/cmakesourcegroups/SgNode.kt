@@ -3,6 +3,7 @@ package com.aiekick.cmakesourcegroups
 data class SgNode(
     val label: String,
     val kind: Kind,
+    var absPath: String? = null,
     val targetType: TargetType? = null,
     val children: MutableList<SgNode> = mutableListOf()
 ) {
@@ -15,5 +16,5 @@ data class SgNode(
         UTILITY
     }
 
-    enum class Kind { ROOT, CMAKE_EXTRA, TARGET, GROUP, FILE, UNGROUPED }
+    enum class Kind { ROOT, CMAKE_EXTRA, FLAG, TARGET, GROUP, FILE, UNGROUPED }
 }

@@ -16,7 +16,7 @@ class NodeRenderer(private val vProject: Project) : DefaultTreeCellRenderer() {
         backgroundNonSelectionColor = UIUtil.getTreeBackground()
         textNonSelectionColor = UIUtil.getTreeForeground()
         backgroundSelectionColor = UIUtil.getTreeSelectionBackground(true)
-        textSelectionColor = UIUtil.getTreeSelectionForeground()
+        textSelectionColor = UIUtil.getTreeSelectionForeground(true)
         borderSelectionColor = UIUtil.getTreeSelectionBorderColor()
     }
 
@@ -37,9 +37,7 @@ class NodeRenderer(private val vProject: Project) : DefaultTreeCellRenderer() {
 
     private fun iconForTargetType(vType: SgNode.TargetType?): Icon = when (vType) {
         SgNode.TargetType.EXECUTABLE -> AllIcons.RunConfigurations.Application
-        SgNode.TargetType.STATIC_LIBRARY -> libraryIcon
-        SgNode.TargetType.OBJECT_LIBRARY -> libraryIcon
-        SgNode.TargetType.SHARED_LIBRARY, SgNode.TargetType.MODULE_LIBRARY -> libraryIcon
+        SgNode.TargetType.STATIC_LIBRARY, SgNode.TargetType.OBJECT_LIBRARY, SgNode.TargetType.SHARED_LIBRARY, SgNode.TargetType.MODULE_LIBRARY -> libraryIcon
         SgNode.TargetType.UTILITY -> AllIcons.Actions.Execute
         else -> AllIcons.Nodes.Module
     }
@@ -61,6 +59,7 @@ class NodeRenderer(private val vProject: Project) : DefaultTreeCellRenderer() {
                 if (!abs.isNullOrBlank()) Icons.iconForAbsolutePath(vProject, abs)
                 else Icons.iconForFileName(ui.text)
             }
+            SgNode.Kind.FLAG -> AllIcons.Actions.Annotate
             SgNode.Kind.CMAKE_EXTRA -> AllIcons.Actions.Minimap
             SgNode.Kind.GROUP -> AllIcons.Nodes.Folder
             SgNode.Kind.TARGET -> iconForTargetType(ui.targetType)
